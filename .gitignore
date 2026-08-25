@@ -1,0 +1,18 @@
+# Backend
+backend/.venv/
+backend/storage/*.step
+backend/storage/*.stl
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+*.pyc
+.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+*.swp
