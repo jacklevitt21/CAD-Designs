@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import './App.css'
-import { ApiError, generateFromText, regenerate, stepDownloadUrl } from './api'
+import { apiUrl, ApiError, generateFromText, regenerate, stepDownloadUrl } from './api'
 import { ErrorBanner } from './components/ErrorBanner'
 import { ParamsPanel } from './components/ParamsPanel'
 import { PromptInput } from './components/PromptInput'
@@ -89,7 +89,7 @@ function App() {
                 <span>Generating…</span>
               </div>
             )}
-            <Viewer3D stlUrl={part.stl_url} />
+            <Viewer3D stlUrl={apiUrl(part.stl_url)} />
             <a className="download-btn" href={stepDownloadUrl(part.part_id)}>
               ⬇ Download STEP
             </a>

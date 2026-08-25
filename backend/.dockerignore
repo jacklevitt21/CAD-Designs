@@ -1,0 +1,9 @@
+.venv/
+storage/*.step
+storage/*.stl
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+tests/
+.env
+*.pyc

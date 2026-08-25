@@ -1,5 +1,16 @@
 import type { PartResponse, PartType } from './types'
 
+// In local dev this is empty and Vite's dev-server proxy forwards /api and
+// /files to the backend (see vite.config.ts). In production the frontend and
+// backend are typically deployed separately, so VITE_API_BASE_URL points at
+// the deployed backend's origin (set at build time), e.g.
+// https://text-to-cad-backend.onrender.com
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`
+}
+
 export class ApiError extends Error {
   status: number
   errors?: string[]
@@ -25,7 +36,7 @@ async function handleResponse(res: Response): Promise<PartResponse> {
 }
 
 export async function generateFromText(text: string): Promise<PartResponse> {
-  const res = await fetch('/api/generate', {
+  const res = await fetch(apiUrl('/api/generate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -39,7 +50,7 @@ export async function regenerate(
   material: string | null,
   parameters: Record<string, unknown>,
 ): Promise<PartResponse> {
-  const res = await fetch('/api/regenerate', {
+  const res = await fetch(apiUrl('/api/regenerate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ part_type: partType, name, material, parameters }),
@@ -48,5 +59,5 @@ export async function regenerate(
 }
 
 export function stepDownloadUrl(partId: string): string {
-  return `/api/download/step/${partId}`
+  return apiUrl(`/api/download/step/${partId}`)
 }

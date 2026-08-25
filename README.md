@@ -148,6 +148,36 @@ npm run dev
 Open http://localhost:5173 — the Vite dev server proxies `/api` and `/files`
 to the backend on port 8000 (see `frontend/vite.config.ts`).
 
+## Deploying for free (a real public URL)
+
+Both services deploy to [Render](https://render.com)'s free tier — no credit
+card required. The backend ships as a Docker image (`backend/Dockerfile`);
+CadQuery's CAD kernel needs a couple of system libraries (`libgl1`, `libx11-6`)
+that the Dockerfile installs. The frontend is a static build whose API target
+is set at build time via `VITE_API_BASE_URL` (see `frontend/src/api.ts`) —
+useful because the two services end up on different origins.
+
+1. Sign up at https://render.com (use "Sign in with GitHub" — no separate
+   password/account needed) and authorize it to access this repo.
+2. **New → Web Service** → select this repo → set **Root Directory** to
+   `backend`. Render auto-detects the Dockerfile. Set **Instance Type** to
+   **Free**. Under **Environment Variables**, add:
+   - `GEMINI_API_KEY` = your key from https://aistudio.google.com/apikey
+   - `GEMINI_MODEL` = `gemini-3.5-flash`
+   Click **Create Web Service** and wait for the build to finish. Copy the
+   resulting URL (looks like `https://<something>.onrender.com`).
+3. **New → Static Site** → same repo → set **Root Directory** to `frontend`.
+   **Build Command**: `npm install && npm run build`. **Publish Directory**:
+   `dist`. Under **Environment Variables**, add `VITE_API_BASE_URL` set to
+   the backend URL from step 2 (no trailing slash). Click **Create Static
+   Site**.
+4. Once both are deployed, open the static site's URL — that's your real,
+   shareable link.
+
+Free web services on Render sleep after 15 minutes of inactivity; the first
+request after a while sleeping takes ~30-60s to wake up (later requests are
+fast). That's Render's free tier, not a bug.
+
 ## API
 
 | Endpoint | Description |
