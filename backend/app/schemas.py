@@ -21,6 +21,11 @@ class PartType(str, Enum):
     flange = "flange"
     enclosure = "enclosure"
     shaft = "shaft"
+    spring = "spring"
+    gear = "gear"
+    channel = "channel"
+    bushing = "bushing"
+    bulkhead = "bulkhead"
 
 
 # --------------------------------------------------------------------------
@@ -70,6 +75,17 @@ class ShaftSegment(BaseModel):
 class MountingHoles(BaseModel):
     hole_diameter: float = Field(..., gt=0)
     inset: float = Field(..., gt=0, description="Distance from each corner to the hole center (mm)")
+
+
+class BushingFlange(BaseModel):
+    diameter: float = Field(..., gt=0)
+    thickness: float = Field(..., gt=0)
+
+
+class BoltCircle(BaseModel):
+    bolt_circle_diameter: float = Field(..., gt=0)
+    bolt_count: int = Field(..., ge=2, le=24)
+    bolt_hole_diameter: float = Field(..., gt=0)
 
 
 # --------------------------------------------------------------------------
@@ -132,6 +148,47 @@ class ShaftParams(BaseModel):
     end_chamfer: Optional[Chamfer] = None
 
 
+class SpringParams(BaseModel):
+    wire_diameter: float = Field(..., gt=0)
+    outer_diameter: float = Field(..., gt=0)
+    free_length: float = Field(..., gt=0)
+    num_coils: float = Field(..., gt=0)
+
+
+class GearParams(BaseModel):
+    num_teeth: int = Field(..., ge=6, le=200)
+    module: float = Field(..., gt=0, description="Standard gear module (mm) — tooth size; pitch_diameter = module * num_teeth")
+    thickness: float = Field(..., gt=0)
+    bore_diameter: float = Field(..., gt=0)
+    pressure_angle_deg: float = Field(20.0, gt=0, lt=45)
+
+
+class ChannelParams(BaseModel):
+    length: float = Field(..., gt=0, description="Extrusion length of the channel")
+    web_width: float = Field(..., gt=0, description="Overall outer width across the two flanges")
+    flange_height: float = Field(..., gt=0)
+    thickness: float = Field(..., gt=0)
+    inner_fillet_radius: float = Field(0, ge=0)
+    hole_diameter: float = Field(..., gt=0)
+    holes_per_flange: int = Field(1, ge=1, le=4)
+    edge_margin: float = Field(..., gt=0)
+
+
+class BushingParams(BaseModel):
+    inner_diameter: float = Field(..., gt=0)
+    outer_diameter: float = Field(..., gt=0)
+    length: float = Field(..., gt=0)
+    flange: Optional[BushingFlange] = None
+
+
+class BulkheadParams(BaseModel):
+    diameter: float = Field(..., gt=0, description="Outer diameter, sized to fit inside the body tube")
+    thickness: float = Field(..., gt=0)
+    center_hole_diameter: Optional[float] = Field(None, gt=0, description="Attachment hole (e.g. eye bolt / U-bolt), not a bore")
+    edge_chamfer: float = Field(0, ge=0, description="Chamfer on the outer rim to ease sliding into a tube")
+    bolt_circle: Optional[BoltCircle] = None
+
+
 PARAM_MODELS: dict[PartType, type[BaseModel]] = {
     PartType.l_bracket: LBracketParams,
     PartType.flat_plate: FlatPlateParams,
@@ -139,6 +196,11 @@ PARAM_MODELS: dict[PartType, type[BaseModel]] = {
     PartType.flange: FlangeParams,
     PartType.enclosure: EnclosureParams,
     PartType.shaft: ShaftParams,
+    PartType.spring: SpringParams,
+    PartType.gear: GearParams,
+    PartType.channel: ChannelParams,
+    PartType.bushing: BushingParams,
+    PartType.bulkhead: BulkheadParams,
 }
 
 
@@ -196,6 +258,42 @@ DEFAULTS: dict[PartType, dict] = {
         "fillet_between_steps": 0.0,
         "start_chamfer": None,
         "end_chamfer": None,
+    },
+    PartType.spring: {
+        "wire_diameter": 2.0,
+        "outer_diameter": 20.0,
+        "free_length": 40.0,
+        "num_coils": 8.0,
+    },
+    PartType.gear: {
+        "num_teeth": 20,
+        "module": 2.0,
+        "thickness": 8.0,
+        "bore_diameter": 6.0,
+        "pressure_angle_deg": 20.0,
+    },
+    PartType.channel: {
+        "length": 60.0,
+        "web_width": 30.0,
+        "flange_height": 20.0,
+        "thickness": 3.0,
+        "inner_fillet_radius": 0.0,
+        "hole_diameter": 6.0,
+        "holes_per_flange": 1,
+        "edge_margin": 8.0,
+    },
+    PartType.bushing: {
+        "inner_diameter": 8.0,
+        "outer_diameter": 14.0,
+        "length": 20.0,
+        "flange": None,
+    },
+    PartType.bulkhead: {
+        "diameter": 60.0,
+        "thickness": 6.0,
+        "center_hole_diameter": 8.0,
+        "edge_chamfer": 1.0,
+        "bolt_circle": None,
     },
 }
 

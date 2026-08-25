@@ -6,17 +6,23 @@ a list of human-readable error strings (empty list = valid).
 """
 from __future__ import annotations
 
+from app.generation.gear import base_radius, root_radius
 from app.resolve import PartValidationError
 from app.schemas import (
+    BulkheadParams,
+    BushingParams,
+    ChannelParams,
     EnclosureParams,
     FlangeParams,
     FlatPlateParams,
+    GearParams,
     HolePatternCorners,
     HolePatternGrid,
     HolePatternLinear,
     LBracketParams,
     PartType,
     ShaftParams,
+    SpringParams,
     StandoffParams,
 )
 
@@ -125,6 +131,73 @@ def validate_shaft(p: ShaftParams) -> list[str]:
     return errors
 
 
+def validate_spring(p: SpringParams) -> list[str]:
+    errors = []
+    if p.wire_diameter >= p.outer_diameter:
+        errors.append(f"wire_diameter ({p.wire_diameter}mm) must be smaller than outer_diameter ({p.outer_diameter}mm)")
+        return errors
+    pitch = p.free_length / p.num_coils
+    if pitch < p.wire_diameter * 1.02:
+        errors.append(
+            f"free_length is too short for {p.num_coils} coils of {p.wire_diameter}mm wire — coils would overlap"
+        )
+    return errors
+
+
+def validate_gear(p: GearParams) -> list[str]:
+    errors = []
+    rr = root_radius(p.num_teeth, p.module, p.pressure_angle_deg)
+    br = base_radius(p.num_teeth, p.module, p.pressure_angle_deg)
+    if p.bore_diameter / 2 >= min(rr, br) * 0.85:
+        errors.append(
+            f"bore_diameter ({p.bore_diameter}mm) is too large for {p.num_teeth} teeth at module {p.module} — it would cut into the teeth"
+        )
+    return errors
+
+
+def validate_channel(p: ChannelParams) -> list[str]:
+    errors = []
+    if p.hole_diameter >= p.thickness * 4:
+        errors.append(f"hole_diameter ({p.hole_diameter}mm) is too large relative to thickness ({p.thickness}mm)")
+    if p.edge_margin * 2 >= p.length:
+        errors.append(f"edge_margin ({p.edge_margin}mm) leaves no room along the channel's length ({p.length}mm)")
+    if p.hole_diameter / 2 >= p.edge_margin:
+        errors.append(f"hole_diameter ({p.hole_diameter}mm) is too large for edge_margin ({p.edge_margin}mm)")
+    if p.hole_diameter / 2 >= p.flange_height - p.edge_margin:
+        errors.append("hole_diameter is too large for the flange_height — hole would breach the top edge")
+    if p.inner_fillet_radius >= min(p.web_width, p.flange_height, p.thickness * 4):
+        errors.append("inner_fillet_radius is too large for the channel's geometry")
+    if p.thickness * 2 >= p.web_width:
+        errors.append(f"thickness ({p.thickness}mm) is too large relative to web_width ({p.web_width}mm)")
+    return errors
+
+
+def validate_bushing(p: BushingParams) -> list[str]:
+    errors = []
+    if p.inner_diameter >= p.outer_diameter * 0.95:
+        errors.append(
+            f"inner_diameter ({p.inner_diameter}mm) is too large for outer_diameter ({p.outer_diameter}mm) — wall too thin"
+        )
+    if p.flange is not None and p.flange.diameter <= p.outer_diameter:
+        errors.append("flange.diameter must be larger than outer_diameter to actually form a flange")
+    return errors
+
+
+def validate_bulkhead(p: BulkheadParams) -> list[str]:
+    errors = []
+    if p.center_hole_diameter is not None and p.center_hole_diameter >= p.diameter * 0.5:
+        errors.append(f"center_hole_diameter ({p.center_hole_diameter}mm) is too large for diameter ({p.diameter}mm)")
+    if p.bolt_circle is not None:
+        bc = p.bolt_circle
+        if bc.bolt_circle_diameter + bc.bolt_hole_diameter >= p.diameter:
+            errors.append("bolt_circle.bolt_circle_diameter + bolt_hole_diameter must be smaller than diameter")
+        if p.center_hole_diameter is not None and bc.bolt_circle_diameter <= p.center_hole_diameter:
+            errors.append("bolt_circle.bolt_circle_diameter must be larger than center_hole_diameter")
+    if p.edge_chamfer >= p.thickness * 0.9:
+        errors.append(f"edge_chamfer ({p.edge_chamfer}mm) is too large relative to thickness ({p.thickness}mm)")
+    return errors
+
+
 _VALIDATORS = {
     PartType.l_bracket: validate_l_bracket,
     PartType.flat_plate: validate_flat_plate,
@@ -132,6 +205,11 @@ _VALIDATORS = {
     PartType.flange: validate_flange,
     PartType.enclosure: validate_enclosure,
     PartType.shaft: validate_shaft,
+    PartType.spring: validate_spring,
+    PartType.gear: validate_gear,
+    PartType.channel: validate_channel,
+    PartType.bushing: validate_bushing,
+    PartType.bulkhead: validate_bulkhead,
 }
 
 

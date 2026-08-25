@@ -56,6 +56,12 @@ Supported part categories, each with its own function:
 - propose_flange: a circular flange with a center bore and a bolt circle
 - propose_enclosure: a simple open-top rectangular enclosure/box with mounting holes
 - propose_shaft: a shaft or pin, optionally stepped (multiple diameters) with chamfered ends
+- propose_spring: a helical compression spring
+- propose_gear: a spur gear with an involute tooth profile around a center bore
+- propose_channel: a C-channel / U-channel structural bracket with mounting holes
+- propose_bushing: a round bushing/sleeve with a bore, optionally with a stepped flange at one end
+- propose_bulkhead: a circular bulkhead disc that fits inside a tube (e.g. a rocket airframe), \
+  with an optional center attachment hole and an optional bolt circle
 
 Rules:
 1. Read the request and decide which ONE category it describes, then call that one function.
@@ -63,7 +69,7 @@ Rules:
    restatement of the text (e.g. "60x40mm legs" -> leg1_length=60, leg2_length=40). \
    If a value isn't given, leave the field null — do NOT guess a plausible number. \
    Sensible engineering defaults are applied automatically downstream.
-3. If the request does not describe any of the 5 supported categories (or is not a \
+3. If the request does not describe any of the supported categories (or is not a \
    mechanical part at all), call `unsupported_request` instead, with a brief reason.
 4. Call exactly one function.
 """
@@ -203,8 +209,89 @@ FUNCTION_DECLARATIONS = [
         ),
     ),
     types.FunctionDeclaration(
+        name="propose_spring",
+        description="A helical compression spring.",
+        parameters_json_schema=_tool_schema(
+            {
+                "wire_diameter": _NUM,
+                "outer_diameter": _NUM,
+                "free_length": _NUM,
+                "num_coils": _NUM,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_gear",
+        description="A spur gear with an involute tooth profile around a center bore.",
+        parameters_json_schema=_tool_schema(
+            {
+                "num_teeth": _INT,
+                "module": _NUM,
+                "thickness": _NUM,
+                "bore_diameter": _NUM,
+                "pressure_angle_deg": _NUM,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_channel",
+        description="A C-channel / U-channel structural bracket with mounting holes.",
+        parameters_json_schema=_tool_schema(
+            {
+                "length": _NUM,
+                "web_width": _NUM,
+                "flange_height": _NUM,
+                "thickness": _NUM,
+                "inner_fillet_radius": _NUM,
+                "hole_diameter": _NUM,
+                "holes_per_flange": _INT,
+                "edge_margin": _NUM,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_bushing",
+        description="A round bushing/sleeve with a bore, optionally with a stepped flange at one end.",
+        parameters_json_schema=_tool_schema(
+            {
+                "inner_diameter": _NUM,
+                "outer_diameter": _NUM,
+                "length": _NUM,
+                "flange": _nullable(
+                    {"type": "object", "properties": {"diameter": _NUM, "thickness": _NUM}}
+                ),
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_bulkhead",
+        description=(
+            "A circular bulkhead disc that fits inside a tube (e.g. a rocket airframe), with an "
+            "optional center attachment hole (for an eye bolt / U-bolt / shock cord) and an "
+            "optional bolt circle of retention screws."
+        ),
+        parameters_json_schema=_tool_schema(
+            {
+                "diameter": _NUM,
+                "thickness": _NUM,
+                "center_hole_diameter": _NUM,
+                "edge_chamfer": _NUM,
+                "bolt_circle": _nullable(
+                    {
+                        "type": "object",
+                        "properties": {
+                            "bolt_circle_diameter": _NUM,
+                            "bolt_count": _INT,
+                            "bolt_hole_diameter": _NUM,
+                        },
+                    }
+                ),
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
         name="unsupported_request",
-        description="Call this when the request does not describe one of the 5 supported part categories.",
+        description="Call this when the request does not describe one of the supported part categories.",
         parameters_json_schema={
             "type": "object",
             "properties": {
@@ -224,6 +311,11 @@ _TOOL_TO_PART_TYPE = {
     "propose_flange": PartType.flange,
     "propose_enclosure": PartType.enclosure,
     "propose_shaft": PartType.shaft,
+    "propose_spring": PartType.spring,
+    "propose_gear": PartType.gear,
+    "propose_channel": PartType.channel,
+    "propose_bushing": PartType.bushing,
+    "propose_bulkhead": PartType.bulkhead,
 }
 
 

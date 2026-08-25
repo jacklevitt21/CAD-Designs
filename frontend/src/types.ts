@@ -5,6 +5,11 @@ export type PartType =
   | 'flange'
   | 'enclosure'
   | 'shaft'
+  | 'spring'
+  | 'gear'
+  | 'channel'
+  | 'bushing'
+  | 'bulkhead'
 
 export const PART_TYPE_LABELS: Record<PartType, string> = {
   l_bracket: 'L-Bracket',
@@ -13,6 +18,11 @@ export const PART_TYPE_LABELS: Record<PartType, string> = {
   flange: 'Flange',
   enclosure: 'Enclosure',
   shaft: 'Shaft / Pin',
+  spring: 'Compression Spring',
+  gear: 'Spur Gear',
+  channel: 'C-Channel Bracket',
+  bushing: 'Bushing / Sleeve',
+  bulkhead: 'Bulkhead',
 }
 
 export interface PartResponse {

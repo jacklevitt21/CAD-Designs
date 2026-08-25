@@ -18,8 +18,13 @@ natively in SolidWorks, Fusion 360, Creo, etc.
 | Flanges | circular, with a bore and a bolt circle |
 | Enclosures | simple open-top boxes with corner mounting holes |
 | Shafts / pins | optionally stepped (multiple diameters), with chamfers |
+| Compression springs | helical coil, built via a sweep along a helix |
+| Spur gears | real involute tooth profile around a center bore |
+| C-channel brackets | U-shaped structural channel with mounting holes |
+| Bushings / sleeves | with an optional stepped flange at one end |
+| Bulkheads | circular disc sized to fit inside a tube, with an optional center attachment hole and bolt circle — e.g. a rocket airframe bulkhead |
 
-Requests outside these five categories are rejected with a clear explanation rather
+Requests outside these categories are rejected with a clear explanation rather
 than guessed at.
 
 ## Architecture
@@ -84,7 +89,8 @@ backend/
     validation.py      cross-field geometric validation
     parsing.py          Gemini API function-calling call (NL -> structured params)
     generation/
-      l_bracket.py, flat_plate.py, standoff.py, flange.py, enclosure.py, shaft.py
+      l_bracket.py, flat_plate.py, standoff.py, flange.py, enclosure.py, shaft.py,
+      spring.py, gear.py, channel.py, bushing.py, bulkhead.py
       common.py         shared CadQuery helpers (hole drilling, etc.)
       export.py          STEP + STL export
       registry.py         part_type -> generator dispatch

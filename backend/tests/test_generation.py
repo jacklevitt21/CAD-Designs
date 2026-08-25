@@ -56,3 +56,48 @@ def test_flange_with_hub_and_fillet():
     validate(PartType.flange, resolved.model)
     result = generate_part(PartType.flange, resolved.model)
     assert result.val().Volume() > 0
+
+
+@pytest.mark.parametrize("num_teeth,module", [(6, 4), (12, 3), (20, 2), (60, 1.5), (200, 0.5)])
+def test_gear_tooth_count_range(num_teeth, module):
+    resolved = resolve_parameters(PartType.gear, {"num_teeth": num_teeth, "module": module})
+    validate(PartType.gear, resolved.model)
+    result = generate_part(PartType.gear, resolved.model)
+    assert result.val().Volume() > 0
+
+
+def test_spring_fractional_coils():
+    resolved = resolve_parameters(
+        PartType.spring, {"num_coils": 3.5, "wire_diameter": 1.0, "outer_diameter": 8}
+    )
+    validate(PartType.spring, resolved.model)
+    result = generate_part(PartType.spring, resolved.model)
+    assert result.val().Volume() > 0
+
+
+def test_bushing_with_flange():
+    resolved = resolve_parameters(PartType.bushing, {"flange": {"diameter": 20, "thickness": 3}})
+    validate(PartType.bushing, resolved.model)
+    result = generate_part(PartType.bushing, resolved.model)
+    assert result.val().Volume() > 0
+
+
+def test_bulkhead_with_bolt_circle_and_center_hole():
+    resolved = resolve_parameters(
+        PartType.bulkhead,
+        {
+            "bolt_circle": {"bolt_circle_diameter": 45, "bolt_count": 4, "bolt_hole_diameter": 4},
+            "center_hole_diameter": 6,
+            "edge_chamfer": 1.5,
+        },
+    )
+    validate(PartType.bulkhead, resolved.model)
+    result = generate_part(PartType.bulkhead, resolved.model)
+    assert result.val().Volume() > 0
+
+
+def test_channel_with_holes_and_fillet():
+    resolved = resolve_parameters(PartType.channel, {"holes_per_flange": 2, "inner_fillet_radius": 2})
+    validate(PartType.channel, resolved.model)
+    result = generate_part(PartType.channel, resolved.model)
+    assert result.val().Volume() > 0

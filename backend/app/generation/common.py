@@ -35,3 +35,26 @@ def evenly_spaced(count: int, low: float, high: float) -> list[float]:
         return [(low + high) / 2]
     step = (high - low) / (count - 1)
     return [low + i * step for i in range(count)]
+
+
+class CircleRadiusSelector(cq.Selector):
+    """Selects circular edges whose radius matches within a tolerance.
+    Useful for filleting/chamfering just the outer rim of a disc-like part
+    without touching bores, bolt holes, or a hub.
+    """
+
+    def __init__(self, radius: float, tol: float = 1e-3):
+        self.radius = radius
+        self.tol = tol
+
+    def filter(self, objectList):
+        matches = []
+        for edge in objectList:
+            if edge.geomType() != "CIRCLE":
+                continue
+            try:
+                if abs(edge.radius() - self.radius) < self.tol:
+                    matches.append(edge)
+            except Exception:
+                continue
+        return matches

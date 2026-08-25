@@ -4,27 +4,8 @@ import math
 
 import cadquery as cq
 
+from app.generation.common import CircleRadiusSelector
 from app.schemas import FlangeParams
-
-
-class _CircleRadiusSelector(cq.Selector):
-    """Selects circular edges whose radius matches within a tolerance."""
-
-    def __init__(self, radius: float, tol: float = 1e-3):
-        self.radius = radius
-        self.tol = tol
-
-    def filter(self, objectList):
-        matches = []
-        for edge in objectList:
-            if edge.geomType() != "CIRCLE":
-                continue
-            try:
-                if abs(edge.radius() - self.radius) < self.tol:
-                    matches.append(edge)
-            except Exception:
-                continue
-        return matches
 
 
 def generate(p: FlangeParams) -> cq.Workplane:
@@ -69,7 +50,7 @@ def generate(p: FlangeParams) -> cq.Workplane:
     if p.fillet_radius > 0:
         # Round the outer rim edges only (top & bottom of the base disc at
         # outer_diameter) — leaves the bore, bolt holes, and hub untouched.
-        result = result.edges(_CircleRadiusSelector(p.outer_diameter / 2)).fillet(
+        result = result.edges(CircleRadiusSelector(p.outer_diameter / 2)).fillet(
             p.fillet_radius
         )
 

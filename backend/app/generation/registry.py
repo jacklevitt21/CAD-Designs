@@ -4,7 +4,19 @@ from typing import Callable
 
 import cadquery as cq
 
-from app.generation import enclosure, flange, flat_plate, l_bracket, shaft, standoff
+from app.generation import (
+    bulkhead,
+    bushing,
+    channel,
+    enclosure,
+    flange,
+    flat_plate,
+    gear,
+    l_bracket,
+    shaft,
+    spring,
+    standoff,
+)
 from app.schemas import PartType
 
 GENERATORS: dict[PartType, Callable[..., cq.Workplane]] = {
@@ -14,6 +26,11 @@ GENERATORS: dict[PartType, Callable[..., cq.Workplane]] = {
     PartType.flange: flange.generate,
     PartType.enclosure: enclosure.generate,
     PartType.shaft: shaft.generate,
+    PartType.spring: spring.generate,
+    PartType.gear: gear.generate,
+    PartType.channel: channel.generate,
+    PartType.bushing: bushing.generate,
+    PartType.bulkhead: bulkhead.generate,
 }
 
 

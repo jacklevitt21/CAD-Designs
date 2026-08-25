@@ -20,6 +20,8 @@ NESTED_DEFAULTS: dict[str, dict] = {
     "hub": {"diameter": 30.0, "height": 10.0},
     "start_chamfer": {"size": 1.0, "angle_deg": 45.0},
     "end_chamfer": {"size": 1.0, "angle_deg": 45.0},
+    "flange": {"diameter": 20.0, "thickness": 3.0},
+    "bolt_circle": {"bolt_circle_diameter": 40.0, "bolt_count": 4, "bolt_hole_diameter": 4.0},
 }
 SEGMENT_DEFAULT = {"diameter": 10.0, "length": 20.0}
 

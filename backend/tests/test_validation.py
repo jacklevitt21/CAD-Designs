@@ -29,3 +29,32 @@ def test_wall_thickness_too_large_for_enclosure():
 def test_pydantic_rejects_negative_dimension():
     with pytest.raises(PartValidationError):
         resolve_parameters(PartType.standoff, {"outer_diameter": -5})
+
+
+def test_gear_bore_too_large_for_tooth_count():
+    resolved = resolve_parameters(PartType.gear, {"num_teeth": 8, "module": 1, "bore_diameter": 10})
+    with pytest.raises(PartValidationError):
+        validate(PartType.gear, resolved.model)
+
+
+def test_spring_coils_would_overlap():
+    resolved = resolve_parameters(
+        PartType.spring, {"wire_diameter": 3, "free_length": 20, "num_coils": 10}
+    )
+    with pytest.raises(PartValidationError):
+        validate(PartType.spring, resolved.model)
+
+
+def test_bushing_wall_too_thin():
+    resolved = resolve_parameters(PartType.bushing, {"inner_diameter": 13.6, "outer_diameter": 14})
+    with pytest.raises(PartValidationError):
+        validate(PartType.bushing, resolved.model)
+
+
+def test_bulkhead_bolt_circle_smaller_than_center_hole():
+    resolved = resolve_parameters(
+        PartType.bulkhead,
+        {"center_hole_diameter": 40, "bolt_circle": {"bolt_circle_diameter": 30, "bolt_count": 4, "bolt_hole_diameter": 4}},
+    )
+    with pytest.raises(PartValidationError):
+        validate(PartType.bulkhead, resolved.model)
