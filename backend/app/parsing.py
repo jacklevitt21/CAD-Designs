@@ -10,11 +10,20 @@ than guessed — app/resolve.py fills them in with documented defaults.
 from __future__ import annotations
 
 import os
+import time
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from app.schemas import PartType
+
+# Gemini occasionally returns 503 ("model overloaded, try again") or 429
+# (rate limit) during demand spikes — both are transient, so retry a couple
+# times with backoff before surfacing an error. Anything else (400 bad
+# request, 401/403 auth) fails immediately since retrying won't help.
+_RETRYABLE_CODES = {429, 503}
+_RETRY_DELAYS_SECONDS = [2, 4]
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 
@@ -228,13 +237,27 @@ class ParsedPart:
         self.raw_parameters = raw_parameters
 
 
+def _generate_with_retry(client: genai.Client, **kwargs):
+    for delay in [0, *_RETRY_DELAYS_SECONDS]:
+        if delay:
+            time.sleep(delay)
+        try:
+            return client.models.generate_content(**kwargs)
+        except genai_errors.APIError as exc:
+            if exc.code not in _RETRYABLE_CODES:
+                raise
+            last_exc = exc
+    raise last_exc
+
+
 def parse_text(text: str) -> ParsedPart:
     """Call Gemini to classify + extract structured parameters from free text.
     Raises UnsupportedPartError if the request isn't one of the 5 categories.
     """
     client = genai.Client()
 
-    response = client.models.generate_content(
+    response = _generate_with_retry(
+        client,
         model=MODEL,
         contents=text,
         config=types.GenerateContentConfig(
