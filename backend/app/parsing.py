@@ -1,7 +1,8 @@
-"""Natural-language -> structured parameters, via a single forced tool-use
-call to the Claude API. One tool per supported part category (mirroring the
-schemas in app/schemas.py), plus an `unsupported_request` escape hatch the
-model calls when the text doesn't describe one of the 5 categories.
+"""Natural-language -> structured parameters, via a single forced
+function-calling call to the Gemini API (free tier — see README). One
+function per supported part category (mirroring the schemas in
+app/schemas.py), plus an `unsupported_request` escape hatch the model calls
+when the text doesn't describe one of the 5 categories.
 
 Fields the model isn't confident about should be *omitted* (or null) rather
 than guessed — app/resolve.py fills them in with documented defaults.
@@ -10,20 +11,32 @@ from __future__ import annotations
 
 import os
 
-import anthropic
+from google import genai
+from google.genai import types
 
 from app.schemas import PartType
 
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 
-_NUM = {"type": ["number", "null"]}
-_INT = {"type": ["integer", "null"]}
-_STR = {"type": ["string", "null"]}
+_NULL = {"type": "null"}
+
+
+def _nullable(schema: dict) -> dict:
+    return {"anyOf": [schema, _NULL]}
+
+
+def _nullable_enum(values: list[str]) -> dict:
+    return {"anyOf": [{"type": "string", "enum": values}, _NULL]}
+
+
+_NUM = _nullable({"type": "number"})
+_INT = _nullable({"type": "integer"})
+_STR = _nullable({"type": "string"})
 
 SYSTEM_PROMPT = """You convert a free-text description of a simple mechanical part into \
 structured parameters for a parametric CAD generator. All dimensions are in millimeters.
 
-Supported part categories, each with its own tool:
+Supported part categories, each with its own function:
 - propose_l_bracket: an L-shaped / angle mounting bracket (two perpendicular legs)
 - propose_flat_plate: a flat rectangular plate with a bolt-hole pattern
 - propose_standoff: a round or hex standoff / spacer, optionally with a through-hole
@@ -32,202 +45,164 @@ Supported part categories, each with its own tool:
 - propose_shaft: a shaft or pin, optionally stepped (multiple diameters) with chamfered ends
 
 Rules:
-1. Read the request and decide which ONE category it describes, then call that one tool.
+1. Read the request and decide which ONE category it describes, then call that one function.
 2. Only fill in a field if the text states it explicitly or it's an unambiguous, direct \
    restatement of the text (e.g. "60x40mm legs" -> leg1_length=60, leg2_length=40). \
    If a value isn't given, leave the field null — do NOT guess a plausible number. \
    Sensible engineering defaults are applied automatically downstream.
 3. If the request does not describe any of the 5 supported categories (or is not a \
    mechanical part at all), call `unsupported_request` instead, with a brief reason.
-4. Call exactly one tool.
+4. Call exactly one function.
 """
 
-_HOLE_PATTERN_SCHEMA = {
-    "type": ["object", "null"],
-    "description": "Hole layout on the plate. Omit entirely for the default corner pattern.",
-    "properties": {
-        "type": {"type": ["string", "null"], "enum": ["corners", "grid", "linear", None]},
-        "edge_margin": _NUM,
-        "rows": _INT,
-        "cols": _INT,
-        "spacing_x": _NUM,
-        "spacing_y": _NUM,
-        "hole_count": _INT,
-        "spacing": _NUM,
-        "orientation": {"type": ["string", "null"], "enum": ["x", "y", None]},
-    },
-}
+_HOLE_PATTERN_SCHEMA = _nullable(
+    {
+        "type": "object",
+        "description": "Hole layout on the plate. Omit entirely for the default corner pattern.",
+        "properties": {
+            "type": _nullable_enum(["corners", "grid", "linear"]),
+            "edge_margin": _NUM,
+            "rows": _INT,
+            "cols": _INT,
+            "spacing_x": _NUM,
+            "spacing_y": _NUM,
+            "hole_count": _INT,
+            "spacing": _NUM,
+            "orientation": _nullable_enum(["x", "y"]),
+        },
+    }
+)
 
-_CHAMFER_SCHEMA = {
-    "type": ["object", "null"],
-    "properties": {"size": _NUM, "angle_deg": _NUM},
-}
+_CHAMFER_SCHEMA = _nullable(
+    {"type": "object", "properties": {"size": _NUM, "angle_deg": _NUM}}
+)
 
-TOOLS = [
-    {
-        "name": "propose_l_bracket",
-        "description": "An L-shaped / right-angle mounting bracket with two perpendicular legs.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": _STR,
-                "material": _STR,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "leg1_length": _NUM,
-                        "leg2_length": _NUM,
-                        "width": _NUM,
-                        "thickness": _NUM,
-                        "inner_fillet_radius": _NUM,
-                        "edge_fillet_radius": _NUM,
-                        "hole_diameter": _NUM,
-                        "holes_per_leg": _INT,
-                        "edge_margin": _NUM,
-                    },
-                },
-            },
-            "required": ["parameters"],
+
+def _tool_schema(properties: dict) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "name": _STR,
+            "material": _STR,
+            "parameters": {"type": "object", "properties": properties},
         },
-    },
-    {
-        "name": "propose_flat_plate",
-        "description": "A flat rectangular plate with a bolt-hole pattern.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": _STR,
-                "material": _STR,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "length": _NUM,
-                        "width": _NUM,
-                        "thickness": _NUM,
-                        "corner_fillet_radius": _NUM,
-                        "hole_diameter": _NUM,
-                        "hole_pattern": _HOLE_PATTERN_SCHEMA,
-                    },
-                },
-            },
-            "required": ["parameters"],
-        },
-    },
-    {
-        "name": "propose_standoff",
-        "description": "A round or hex standoff / spacer, optionally with a through-hole.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": _STR,
-                "material": _STR,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "body_shape": {"type": ["string", "null"], "enum": ["round", "hex", None]},
-                        "outer_diameter": _NUM,
-                        "height": _NUM,
-                        "through_hole_diameter": _NUM,
-                    },
-                },
-            },
-            "required": ["parameters"],
-        },
-    },
-    {
-        "name": "propose_flange",
-        "description": "A circular flange with a center bore and a bolt circle.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": _STR,
-                "material": _STR,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "outer_diameter": _NUM,
-                        "thickness": _NUM,
-                        "bore_diameter": _NUM,
-                        "bolt_circle_diameter": _NUM,
-                        "bolt_count": _INT,
-                        "bolt_hole_diameter": _NUM,
-                        "fillet_radius": _NUM,
-                        "hub": {
-                            "type": ["object", "null"],
-                            "properties": {"diameter": _NUM, "height": _NUM},
+        "required": ["parameters"],
+    }
+
+
+FUNCTION_DECLARATIONS = [
+    types.FunctionDeclaration(
+        name="propose_l_bracket",
+        description="An L-shaped / right-angle mounting bracket with two perpendicular legs.",
+        parameters_json_schema=_tool_schema(
+            {
+                "leg1_length": _NUM,
+                "leg2_length": _NUM,
+                "width": _NUM,
+                "thickness": _NUM,
+                "inner_fillet_radius": _NUM,
+                "edge_fillet_radius": _NUM,
+                "hole_diameter": _NUM,
+                "holes_per_leg": _INT,
+                "edge_margin": _NUM,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_flat_plate",
+        description="A flat rectangular plate with a bolt-hole pattern.",
+        parameters_json_schema=_tool_schema(
+            {
+                "length": _NUM,
+                "width": _NUM,
+                "thickness": _NUM,
+                "corner_fillet_radius": _NUM,
+                "hole_diameter": _NUM,
+                "hole_pattern": _HOLE_PATTERN_SCHEMA,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_standoff",
+        description="A round or hex standoff / spacer, optionally with a through-hole.",
+        parameters_json_schema=_tool_schema(
+            {
+                "body_shape": _nullable_enum(["round", "hex"]),
+                "outer_diameter": _NUM,
+                "height": _NUM,
+                "through_hole_diameter": _NUM,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_flange",
+        description="A circular flange with a center bore and a bolt circle.",
+        parameters_json_schema=_tool_schema(
+            {
+                "outer_diameter": _NUM,
+                "thickness": _NUM,
+                "bore_diameter": _NUM,
+                "bolt_circle_diameter": _NUM,
+                "bolt_count": _INT,
+                "bolt_hole_diameter": _NUM,
+                "fillet_radius": _NUM,
+                "hub": _nullable(
+                    {"type": "object", "properties": {"diameter": _NUM, "height": _NUM}}
+                ),
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_enclosure",
+        description="A simple open-top rectangular enclosure/box with mounting holes.",
+        parameters_json_schema=_tool_schema(
+            {
+                "length": _NUM,
+                "width": _NUM,
+                "height": _NUM,
+                "wall_thickness": _NUM,
+                "corner_fillet_radius": _NUM,
+                "mounting_holes": _nullable(
+                    {"type": "object", "properties": {"hole_diameter": _NUM, "inset": _NUM}}
+                ),
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="propose_shaft",
+        description="A shaft or pin, optionally stepped (multiple diameters) with chamfered ends.",
+        parameters_json_schema=_tool_schema(
+            {
+                "segments": _nullable(
+                    {
+                        "type": "array",
+                        "description": "Ordered list of {diameter, length} along the shaft axis.",
+                        "items": {
+                            "type": "object",
+                            "properties": {"diameter": _NUM, "length": _NUM},
                         },
-                    },
-                },
-            },
-            "required": ["parameters"],
-        },
-    },
-    {
-        "name": "propose_enclosure",
-        "description": "A simple open-top rectangular enclosure/box with mounting holes.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": _STR,
-                "material": _STR,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "length": _NUM,
-                        "width": _NUM,
-                        "height": _NUM,
-                        "wall_thickness": _NUM,
-                        "corner_fillet_radius": _NUM,
-                        "mounting_holes": {
-                            "type": ["object", "null"],
-                            "properties": {"hole_diameter": _NUM, "inset": _NUM},
-                        },
-                    },
-                },
-            },
-            "required": ["parameters"],
-        },
-    },
-    {
-        "name": "propose_shaft",
-        "description": "A shaft or pin, optionally stepped (multiple diameters) with chamfered ends.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": _STR,
-                "material": _STR,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "segments": {
-                            "type": ["array", "null"],
-                            "description": "Ordered list of {diameter, length} along the shaft axis.",
-                            "items": {
-                                "type": "object",
-                                "properties": {"diameter": _NUM, "length": _NUM},
-                            },
-                        },
-                        "fillet_between_steps": _NUM,
-                        "start_chamfer": _CHAMFER_SCHEMA,
-                        "end_chamfer": _CHAMFER_SCHEMA,
-                    },
-                },
-            },
-            "required": ["parameters"],
-        },
-    },
-    {
-        "name": "unsupported_request",
-        "description": "Call this when the request does not describe one of the 5 supported part categories.",
-        "input_schema": {
+                    }
+                ),
+                "fillet_between_steps": _NUM,
+                "start_chamfer": _CHAMFER_SCHEMA,
+                "end_chamfer": _CHAMFER_SCHEMA,
+            }
+        ),
+    ),
+    types.FunctionDeclaration(
+        name="unsupported_request",
+        description="Call this when the request does not describe one of the 5 supported part categories.",
+        parameters_json_schema={
             "type": "object",
             "properties": {
                 "reason": {"type": "string", "description": "Brief, user-facing explanation."},
             },
             "required": ["reason"],
         },
-    },
+    ),
 ]
+
+TOOL = types.Tool(function_declarations=FUNCTION_DECLARATIONS)
 
 _TOOL_TO_PART_TYPE = {
     "propose_l_bracket": PartType.l_bracket,
@@ -254,34 +229,41 @@ class ParsedPart:
 
 
 def parse_text(text: str) -> ParsedPart:
-    """Call Claude to classify + extract structured parameters from free text.
+    """Call Gemini to classify + extract structured parameters from free text.
     Raises UnsupportedPartError if the request isn't one of the 5 categories.
     """
-    client = anthropic.Anthropic()
+    client = genai.Client()
 
-    response = client.messages.create(
+    response = client.models.generate_content(
         model=MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        tools=TOOLS,
-        tool_choice={"type": "any"},
-        messages=[{"role": "user", "content": text}],
+        contents=text,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=[TOOL],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(mode="ANY")
+            ),
+        ),
     )
 
-    tool_use = next((b for b in response.content if b.type == "tool_use"), None)
-    if tool_use is None:
+    calls = response.function_calls or []
+    call = calls[0] if calls else None
+    if call is None:
         raise UnsupportedPartError("Couldn't interpret that request as a mechanical part.")
 
-    if tool_use.name == "unsupported_request":
-        raise UnsupportedPartError(tool_use.input.get("reason", "Unsupported part request."))
+    args = dict(call.args or {})
 
-    part_type = _TOOL_TO_PART_TYPE.get(tool_use.name)
+    if call.name == "unsupported_request":
+        raise UnsupportedPartError(args.get("reason", "Unsupported part request."))
+
+    part_type = _TOOL_TO_PART_TYPE.get(call.name)
     if part_type is None:
-        raise UnsupportedPartError(f"Unrecognized tool call: {tool_use.name}")
+        raise UnsupportedPartError(f"Unrecognized function call: {call.name}")
 
     return ParsedPart(
         part_type=part_type,
-        name=tool_use.input.get("name"),
-        material=tool_use.input.get("material"),
-        raw_parameters=tool_use.input.get("parameters") or {},
+        name=args.get("name"),
+        material=args.get("material"),
+        raw_parameters=args.get("parameters") or {},
     )

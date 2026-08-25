@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 import uuid
 
-import anthropic
 from dotenv import load_dotenv
+from google.genai import errors as genai_errors
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -75,13 +75,18 @@ def generate_from_text(req: GenerateTextRequest) -> PartResponse:
             status_code=422,
             detail=f"{exc.reason} {SUPPORTED_CATEGORIES_MESSAGE}",
         ) from exc
-    except anthropic.AuthenticationError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Server is missing a valid ANTHROPIC_API_KEY. See backend/README for setup.",
-        ) from exc
-    except anthropic.APIError as exc:
-        raise HTTPException(status_code=502, detail=f"Claude API error: {exc}") from exc
+    except genai_errors.APIError as exc:
+        if exc.code in (401, 403):
+            raise HTTPException(
+                status_code=500,
+                detail="Server is missing a valid GEMINI_API_KEY. See backend/README for setup.",
+            ) from exc
+        if exc.code == 429:
+            raise HTTPException(
+                status_code=502,
+                detail="Gemini API rate limit hit (free tier). Wait a moment and try again.",
+            ) from exc
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {exc.message}") from exc
 
     try:
         resolved = resolve_parameters(parsed.part_type, parsed.raw_parameters)

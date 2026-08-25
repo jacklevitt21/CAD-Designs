@@ -1,5 +1,5 @@
-"""API-level tests for the /api/regenerate path (no Claude API call needed —
-that's exercised separately/manually since it costs real API tokens)."""
+"""API-level tests for the /api/regenerate path (no Gemini API call needed —
+that's exercised separately/manually since it uses real API quota)."""
 from fastapi.testclient import TestClient
 
 from app.main import app

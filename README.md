@@ -25,8 +25,8 @@ than guessed at.
 ## Architecture
 
 ```
-┌─────────────┐   text    ┌──────────────┐   tool-use call   ┌───────────────┐
-│   Frontend   │──────────▶│   FastAPI    │───────────────────▶│  Claude API   │
+┌─────────────┐   text    ┌──────────────┐  function-calling  ┌───────────────┐
+│   Frontend   │──────────▶│   FastAPI    │───────────────────▶│  Gemini API   │
 │ React + r3f  │           │   backend    │◀───────────────────│ (extraction)  │
 └─────────────┘           └──────┬───────┘   structured JSON  └───────────────┘
        ▲                          │
@@ -38,10 +38,12 @@ than guessed at.
 ```
 
 1. **Parsing** (`backend/app/parsing.py`) — the user's free text is sent to the
-   Claude API with one *tool* defined per part category (plus an
-   `unsupported_request` escape hatch). `tool_choice={"type": "any"}` forces
-   Claude to classify the request and extract only the values it's confident
-   about — fields it can't find in the text are left `null` rather than guessed.
+   Gemini API with one *function declaration* per part category (plus an
+   `unsupported_request` escape hatch). `FunctionCallingConfig(mode="ANY")`
+   forces Gemini to classify the request and extract only the values it's
+   confident about — fields it can't find in the text are left `null` rather
+   than guessed. (Gemini's `gemini-3.5-flash` was picked specifically because
+   it has a genuine free tier — see **Cost** below.)
 2. **Resolution** (`backend/app/resolve.py`) — the extracted (partial) parameters
    are merged with per-category defaults (`backend/app/schemas.py::DEFAULTS`),
    tracking which fields were filled in vs. user-specified, then validated into
@@ -80,7 +82,7 @@ backend/
     schemas.py       Pydantic parameter models + per-category defaults
     resolve.py        merge partial params with defaults, track what was defaulted
     validation.py      cross-field geometric validation
-    parsing.py          Claude API tool-use call (NL -> structured params)
+    parsing.py          Gemini API function-calling call (NL -> structured params)
     generation/
       l_bracket.py, flat_plate.py, standoff.py, flange.py, enclosure.py, shaft.py
       common.py         shared CadQuery helpers (hole drilling, etc.)
@@ -106,13 +108,25 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env             # then edit .env and set ANTHROPIC_API_KEY
+cp .env.example .env             # then edit .env and set GEMINI_API_KEY
 uvicorn app.main:app --reload --port 8000
 ```
 
-Get an API key at https://console.anthropic.com/. Without it, `/api/generate`
+Get a **free** API key at https://aistudio.google.com/apikey (no credit card
+required; not available in the EU/UK/Switzerland). Without it, `/api/generate`
 returns a clear 500 explaining the key is missing — `/api/regenerate` (used by
 the "Apply Changes" button) doesn't call the LLM at all, so it works regardless.
+
+### Cost
+
+`gemini-3.5-flash`'s free tier (as of writing: 15 requests/minute, 1,500
+requests/day) comfortably covers interactive use and demoing — each parse is
+one small request. If you outgrow it, or you're in a region without free-tier
+access, swap in a paid Gemini tier or another provider by editing
+`backend/app/parsing.py` — everything downstream (`resolve.py`,
+`validation.py`, the CadQuery generators, the whole frontend) is decoupled
+from the parsing layer via the `ParsedPart` interface, so nothing else needs
+to change.
 
 Run tests:
 
@@ -135,7 +149,7 @@ to the backend on port 8000 (see `frontend/vite.config.ts`).
 
 | Endpoint | Description |
 |---|---|
-| `POST /api/generate` | `{text}` → parses via Claude, validates, generates. Returns a `PartResponse`. |
+| `POST /api/generate` | `{text}` → parses via Gemini, validates, generates. Returns a `PartResponse`. |
 | `POST /api/regenerate` | `{part_type, name, material, parameters}` → re-validates & regenerates without calling the LLM. |
 | `GET /api/download/step/{part_id}` | Downloads the generated STEP file. |
 | `GET /files/{part_id}.stl` | Static STL mesh for the 3D preview. |
