@@ -119,10 +119,13 @@ the "Apply Changes" button) doesn't call the LLM at all, so it works regardless.
 
 ### Cost
 
-`gemini-3.5-flash`'s free tier (as of writing: 15 requests/minute, 1,500
-requests/day) comfortably covers interactive use and demoing — each parse is
-one small request. If you outgrow it, or you're in a region without free-tier
-access, swap in a paid Gemini tier or another provider by editing
+`gemini-3.5-flash`'s free tier covers interactive use and demoing at no cost.
+The actual observed per-project limit (from a live 429 response, which is
+more reliable than third-party blog posts — published numbers vary) was
+**5 requests/minute** for this model; back-to-back rapid testing can hit that,
+but normal interactive use (a person typing, reading the result, trying
+another prompt) won't. If you outgrow it, or you're in a region without
+free-tier access, swap in a paid Gemini tier or another provider by editing
 `backend/app/parsing.py` — everything downstream (`resolve.py`,
 `validation.py`, the CadQuery generators, the whole frontend) is decoupled
 from the parsing layer via the `ParsedPart` interface, so nothing else needs
