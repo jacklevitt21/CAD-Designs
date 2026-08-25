@@ -18,11 +18,15 @@ from google.genai import types
 
 from app.schemas import PartType
 
-# Gemini occasionally returns 503 ("model overloaded, try again") or 429
-# (rate limit) during demand spikes — both are transient, so retry a couple
-# times with backoff before surfacing an error. Anything else (400 bad
-# request, 401/403 auth) fails immediately since retrying won't help.
-_RETRYABLE_CODES = {429, 503}
+# Gemini occasionally returns 503 ("model overloaded") during demand spikes,
+# which usually clears within seconds — worth a couple of quick retries.
+# 429 (rate limit) is deliberately NOT retried here: a 429 means the caller
+# has already used up its quota for the current ~1-minute window, so retrying
+# a few seconds later almost always hits the same window and fails again —
+# and each retry attempt itself counts as another request, compounding the
+# problem for whoever's next request lands in the following window. Fail
+# fast on 429 instead and let the caller wait out the window themselves.
+_RETRYABLE_CODES = {503}
 _RETRY_DELAYS_SECONDS = [2, 4]
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")

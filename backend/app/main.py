@@ -84,7 +84,7 @@ def generate_from_text(req: GenerateTextRequest) -> PartResponse:
         if exc.code == 429:
             raise HTTPException(
                 status_code=502,
-                detail="Gemini API rate limit hit (free tier). Wait a moment and try again.",
+                detail="Gemini free-tier rate limit hit. Wait about a minute, then try again.",
             ) from exc
         raise HTTPException(status_code=502, detail=f"Gemini API error: {exc.message}") from exc
 
